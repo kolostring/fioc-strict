@@ -21,9 +21,13 @@
     "functional dependency injection",
     "di container",
     "typescript",
-    "ioc"
+    "inversion of control",
+    "type safety",
+    "strict typing",
+    "container management",
+    "modular dependency injection"
   ],
-  "description": "A lightweight and type-safe dependency injection library for JS/TS, designed to simplify dependency management",
+  "description": "A lightweight, type-safe extension for @fioc/core, enforcing strict compile-time validation for dependency injection in JS/TS applications",
   "author": "kolostring <yoerodriguezjunior@gmail.com>",
   "contributors": [
     {
