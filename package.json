@@ -45,7 +45,7 @@
     "release": "tsup && npm publish --access public"
   },
   "dependencies": {
-    "@fioc/core": "^1.5.0",
+    "@fioc/core": "^1.6.0",
     "immer": "^10.1.1"
   },
   "devDependencies": {

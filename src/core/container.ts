@@ -15,7 +15,9 @@ type UnionToIntersection<U> = (U extends any ? (x: U) => any : never) extends (
 type StateFromFactories<T extends readonly unknown[]> = Merge<
   UnionToIntersection<
     {
-      [K in keyof T]: T[K] extends DIFactory<infer Key, any, infer R>
+      [K in keyof T]: T[K] extends DIFactory<any, infer R> & {
+        token: DIToken<any, infer Key>;
+      }
         ? Registered<DIToken<R, Key>, R, Key>
         : never;
     }[number]
@@ -138,17 +140,23 @@ export interface StrictDIContainerBuilder<
     Deps extends readonly any[],
     Return = unknown
   >(
-    def: DIToken<Return, Key> extends keyof DIState
+    token: DIToken<Return, Key> extends keyof DIState
       ? "This token is already registered"
-      : Exclude<
-          DIToken<Deps[number], string>,
-          DIToken<
-            keyof DIState extends DIToken<infer T, string> ? T : never,
-            string
-          >
-        > extends never
-      ? DIFactory<Key, Deps, Return>
-      : "One or more dependencies are not registered in the container"
+      : DIToken<Return, Key>,
+    value: Exclude<
+      DIToken<any, keyof DIState extends DIToken<any, infer K> ? K : never>,
+      DIToken<
+        any,
+        keyof DIState extends DIToken<infer T, infer K>
+          ? T extends Deps[number]
+            ? K
+            : never
+          : never
+      >
+    > extends never
+      ? DIFactory<Deps, Return>
+      : "One or more dependencies are not registered in the container",
+    scope?: "transient" | "singleton" | "scoped"
   ): StrictDIContainerBuilder<
     Merge<DIState & Registered<DIToken<Return, Key>, Return, Key>>
   >;
@@ -174,7 +182,9 @@ export interface StrictDIContainerBuilder<
     Deps extends readonly any[],
     Return = unknown
   >(
-    def: DIFactory<Key, Deps, Return>
+    token: DIToken<Return, Key>,
+    value: DIFactory<Deps, Return>,
+    scope?: "transient" | "singleton" | "scoped"
   ): StrictDIContainerBuilder<
     Merge<DIState & Registered<DIToken<Return, Key>, Return, Key>>
   >;
@@ -203,15 +213,17 @@ export interface StrictDIContainerBuilder<
    * ```
    */
   replaceFactoryArray<T extends readonly unknown[]>(values: {
-    [K in keyof T]: T[K] extends DIFactory<infer Key, infer D, infer R>
+    [K in keyof T]: T[K] extends DIFactory<infer D, infer R> & {
+      token: DIToken<any, infer Key>;
+    }
       ? T[K]
       : T[K] extends {
           token: DIToken<unknown, infer Key>;
           dependencies: unknown[];
           factory: (...args: infer Deps) => infer Res;
         }
-      ? DIFactory<Key, Deps, Res>
-      : DIFactory<string>;
+      ? DIFactory<Deps, Res> & { token: DIToken<Res, Key> }
+      : DIFactory & { token: DIToken<any, string> };
   }): StrictDIContainerBuilder<DIState & StateFromFactories<T>>;
 
   /**
@@ -226,6 +238,18 @@ export interface StrictDIContainerBuilder<
    * ```
    */
   getResult(): DIContainer<DIState>;
+}
+
+function defineSingleton<
+  T extends (...args: Params) => any,
+  Params extends any[]
+>(fn: T) {
+  let instance: ReturnType<T> | undefined;
+
+  return (...args: Params) => {
+    instance ??= fn(...args);
+    return instance as ReturnType<T>;
+  };
 }
 
 /**
@@ -267,12 +291,12 @@ export function buildStrictDIContainer<State extends DIContainerState<T>, T>(
         newState as State & { [K in typeof token]: typeof value }
       ) as unknown as ReturnType<StrictDIContainerBuilder<State>["register"]>;
     },
-    registerFactory(value) {
+    registerFactory(token, value, scope = "transient") {
       if (typeof value !== "object" || !value) {
         throw new Error(`Factory must be an object. Got ${value} instead`);
       }
 
-      const { token, dependencies } = value;
+      const { dependencies } = value;
 
       if (token in containerState) {
         throw new Error(
@@ -289,15 +313,27 @@ export function buildStrictDIContainer<State extends DIContainerState<T>, T>(
         }
       }
 
-      return diContainer.replaceFactory(value);
+      return diContainer.replaceFactory(
+        token as DIToken<any, string>,
+        value,
+        scope
+      );
     },
-    replaceFactory(value) {
+    replaceFactory(token, value, scope = "transient") {
       if (typeof value !== "object") {
         throw new Error(`Factory must be an object. Got ${value} instead`);
       }
 
       const newState = produce(containerState, (draft: any) => {
-        draft[value.token] = value;
+        const val =
+          scope === "singleton"
+            ? { ...value, factory: defineSingleton(value.factory) }
+            : value;
+
+        draft[token] = {
+          ...val,
+          scope,
+        };
         return draft;
       });
 
@@ -327,15 +363,30 @@ export function buildStrictDIContainer<State extends DIContainerState<T>, T>(
             );
           const state = (containerState as any)[token];
 
-          if (!(state as DIFactory<Key>).dependencies) {
+          if (!(state as DIFactory).dependencies) {
             return state as T;
           }
 
-          return (state as DIFactory<Key>).factory(
-            ...(state as DIFactory<Key>).dependencies.map(
+          return (state as DIFactory).factory(
+            ...(state as DIFactory).dependencies.map(
               (dep: DIToken<unknown, string>) => diContainer.resolve(dep)
             )
           ) as T;
+        },
+        createScope(callback) {
+          const instances: { [key: DIToken<any>]: any } = {};
+          const scopedResolve: (typeof diContainer)["resolve"] = (
+            token: DIToken<any>
+          ) => {
+            if (token in instances) return instances[token];
+            const resolved = diContainer.resolve(token);
+            if ((diContainer.getState() as any)[token]?.["scope"] === "scoped")
+              instances[token] = resolved;
+
+            return resolved;
+          };
+
+          callback(scopedResolve);
         },
       };
 
