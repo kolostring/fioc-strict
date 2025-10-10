@@ -1,6 +1,6 @@
 {
   "name": "@fioc/strict",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "license": "MIT",
   "main": "./dist/cjs/index.cjs",
@@ -18,16 +18,20 @@
   },
   "keywords": [
     "dependency injection",
+    "strict dependency injection",
     "functional dependency injection",
-    "di container",
+    "fioc",
+    "fluid inversion of control",
     "typescript",
-    "inversion of control",
     "type safety",
     "strict typing",
+    "compile-time validation",
     "container management",
-    "modular dependency injection"
+    "react",
+    "nextjs",
+    "nodejs"
   ],
-  "description": "A lightweight, type-safe extension for @fioc/core, enforcing strict compile-time validation for dependency injection in JS/TS applications",
+  "description": "Type-safe DI for JS/TS with strict compile-time validation — an extension of @fioc/core for robust dependency management.",
   "author": "kolostring <yoerodriguezjunior@gmail.com>",
   "contributors": [
     {
